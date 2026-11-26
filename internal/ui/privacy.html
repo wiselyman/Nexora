@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#10131b"><title>Nexora · 数据流与隐私</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body><main class="shell privacy-shell">
+<header class="top"><div class="brand"><div class="logo"><span aria-hidden="true">N</span></div><div><h1>数据流与隐私</h1><small>连接前，请了解哪些数据会离开本机</small></div></div><a class="btn" href="/">返回 Nexora 设置</a></header>
+<article class="card privacy-doc">
+<h2>使用 Tunnel 时，数据会经过 OpenAI</h2>
+<p>Nexora 在你的电脑上运行，并只监听本机回环地址；它不会开放公网入站端口。但 ChatGPT 发起的 MCP 工具请求和结果会经过 OpenAI Tunnel 服务与 tunnel-client。工具数据不会因为在本机执行就自动只留在本机。</p>
+<div class="privacy-flow" aria-label="数据流路径">ChatGPT / OpenAI → OpenAI Tunnel → 本机 tunnel-client → Nexora → 本机工具</div>
+<h2>可能传输的数据</h2>
+<p>取决于你调用的工具，数据可能包括命令文本和输出、所选目录中的文件内容、屏幕截图、窗口标题、系统信息以及你输入的文本。请只连接可信的 ChatGPT 账户，并只开启当前需要的工具权限。</p>
+<h2>凭据如何使用</h2>
+<ul><li>运行时 API Key 优先保存在操作系统凭据库；不可用时回退到当前用户配置目录中的受限文件。Nexora 将密钥传给本机 tunnel-client，用于连接 OpenAI Tunnel 控制面；不会把它作为 MCP 请求头转发给本机服务。Tunnel 停止后，可在设置页清除本机保存的 Key；这不会撤销 OpenAI Platform 上的 Key，疑似泄露时还必须到 Platform 撤销。</li><li>本机 MCP 令牌用于保护 Nexora 的 `/mcp` 接口。tunnel-client 只会把该令牌作为请求头发送给配置的本机 MCP 地址；清除运行时 API Key 时会保留这个本机令牌。</li><li>设置页访问令牌是每次运行临时生成的，仅供本机配置页面访问；应用退出后失效。</li></ul>
+<h2>电脑权限由你控制</h2>
+<p>命令、文件、桌面和管理员权限默认关闭。命令执行开启后，每条命令都需要你在本机单独批准，但命令仍可访问当前账户本身有权访问的内容；文件工具则限制在你明确选定的文件夹中。截图和桌面操作可能暴露或改变屏幕上显示的内容。</p>
+<h2>诊断与卸载</h2>
+<p>日志会尝试脱敏已配置密钥及常见凭据格式，但自动识别不能覆盖所有情况；导出诊断后，请在分享前检查路径和其他个人标识。若设置页无法清除密钥，可在系统凭据管理器中删除 Nexora 的 Runtime API Key；若使用回退文件，请退出应用后只删除 secrets.json 的 runtime_api_key 字段，并保留 mcp_token。卸载 Nexora 会保留本机设置和凭据。删除它们前，请先确认不再需要保存的配置。</p>
+<p class="privacy-updated">详细说明与限制见安装包中的 <code>privacy-data-flow.md</code> 和项目 README。OpenAI 侧的数据处理方式取决于你使用的产品、账户和组织设置。</p>
+</article><div class="footer"><span>Nexora 本机 Agent · 仅回环监听</span><span>隐私说明随本地应用提供</span></div></main></body></html>

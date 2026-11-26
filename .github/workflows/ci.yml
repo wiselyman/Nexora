@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.27.4"
+          cache: true
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+      - name: Check UI content security policy
+        run: bash ./scripts/check-ui-security.sh
+      - name: Check packaging script syntax
+        run: bash ./scripts/check-packaging-syntax.sh
+      - name: Test release asset inventory gate
+        run: python3 ./scripts/test-release-inventory.py
+      - name: Check Go formatting
+        run: |
+          files="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$files" ]; then
+            printf 'These Go files need gofmt:\n%s\n' "$files"
+            exit 1
+          fi
+      - name: Run static analysis
+        run: go vet ./...
+      - name: Run security and configuration regressions
+        run: go test ./cmd/nexora ./internal/app ./internal/config ./internal/fileaccess ./internal/mcp ./internal/startup
+      - name: Smoke-test Unix install lifecycle
+        run: bash ./scripts/test-install-lifecycle.sh
+      - name: Smoke-test platform archive contents
+        run: bash ./scripts/test-package-archives.sh
+
+  windows-script-parse:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.27.4"
+          cache: true
+      - name: Parse Windows PowerShell installers
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem ./scripts/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$tokens, [ref]$parseErrors
+            ) | Out-Null
+            if ($parseErrors.Count -gt 0) { $errors += $parseErrors }
+          }
+          if ($errors.Count -gt 0) {
+            $errors | Format-List *
+            exit 1
+          }
+      - name: Test command process cancellation and timeout
+        run: go test ./internal/mcp ./internal/startup
+      - name: Smoke-test Windows install lifecycle
+        shell: pwsh
+        run: ./scripts/test-windows-install-lifecycle.ps1
+
+  cross-build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.27.4"
+          cache: true
+      - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags="-X nexora/internal/app.Version=ci" -o "$RUNNER_TEMP/Nexora-${GOOS}-${GOARCH}" ./cmd/nexora
+      - name: Check binary for known vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
+          "$(go env GOPATH)/bin/govulncheck" -mode=binary "$RUNNER_TEMP/Nexora-${{ matrix.goos }}-${{ matrix.goarch }}"
