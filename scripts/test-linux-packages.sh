@@ -17,10 +17,12 @@ for arch in amd64 arm64; do
   expected_rpm_arch=x86_64
   [[ "$arch" == arm64 ]] && expected_rpm_arch=aarch64
   [[ "$rpm_arch" == "$expected_rpm_arch" ]] || { echo "$rpm architecture is $rpm_arch, expected $expected_rpm_arch" >&2; exit 1; }
-  dpkg-deb -c "$deb" | grep -Fq './usr/bin/nexora'
-  dpkg-deb -c "$deb" | grep -Fq './usr/share/applications/nexora.desktop'
-  rpm -qpl "$rpm" | grep -Fxq '/usr/bin/nexora'
-  rpm -qpl "$rpm" | grep -Fxq '/usr/share/applications/nexora.desktop'
+  deb_contents="$(dpkg-deb -c "$deb")"
+  grep -Fq './usr/bin/nexora' <<<"$deb_contents"
+  grep -Fq './usr/share/applications/nexora.desktop' <<<"$deb_contents"
+  rpm_contents="$(rpm -qpl "$rpm")"
+  grep -Fxq '/usr/bin/nexora' <<<"$rpm_contents"
+  grep -Fxq '/usr/share/applications/nexora.desktop' <<<"$rpm_contents"
   rpm -qp --scripts "$rpm" | grep -Fq 'http://localhost:18080'
   deb_control="$packages/control-$arch"
   mkdir -p "$deb_control"
