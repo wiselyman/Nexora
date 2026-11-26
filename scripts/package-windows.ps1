@@ -20,13 +20,16 @@ foreach ($arch in @("amd64", "arm64")) {
 }
 
 # Smoke-test a full user-scoped install and uninstall using the amd64 payload.
-$installRoot = Join-Path $env:RUNNER_TEMP "Nexora-installer-smoke"
+$installRoot = Join-Path $env:LOCALAPPDATA "Programs\Nexora"
+$smokeLog = Join-Path $env:RUNNER_TEMP "Nexora-installer-smoke.log"
+Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $smokeLog -Force -ErrorAction SilentlyContinue
 $installer = Join-Path $outputDirectory "Nexora-$Version-windows-amd64-setup.exe"
-& $installer "/VERYSILENT" "/SUPPRESSMSGBOXES" "/NORESTART" "/DIR=`"$installRoot`"" "/LOG=$(Join-Path $env:RUNNER_TEMP 'Nexora-installer-smoke.log')"
+& $installer "/VERYSILENT" "/SUPPRESSMSGBOXES" "/NORESTART" "/LOG=$smokeLog"
 if ($LASTEXITCODE -ne 0) { throw "Silent installer smoke test failed with exit code $LASTEXITCODE" }
 $installedBinary = Join-Path $installRoot "Nexora.exe"
 if (!(Test-Path -LiteralPath $installedBinary -PathType Leaf)) {
-  Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP "Nexora-installer-smoke.log") -ErrorAction SilentlyContinue
+  Get-Content -LiteralPath $smokeLog -ErrorAction SilentlyContinue
   throw "Installer did not place Nexora.exe in $installRoot"
 }
 $versionOutput = & $installedBinary -version
