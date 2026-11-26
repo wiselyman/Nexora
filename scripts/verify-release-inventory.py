@@ -8,28 +8,32 @@ import re
 import sys
 
 
-TARGETS = (
-    ("darwin", "amd64"),
-    ("darwin", "arm64"),
-    ("linux", "amd64"),
-    ("linux", "arm64"),
-    ("windows", "amd64"),
-    ("windows", "arm64"),
-)
+TARGETS = {
+    "darwin": ("amd64", "arm64"),
+    "linux": ("amd64", "arm64"),
+    "windows": ("amd64", "arm64"),
+}
 
 
 def expected_names(version: str) -> tuple[set[str], set[str]]:
     public_assets = {"SHA256SUMS"}
     checksum_assets: set[str] = set()
-    for os_name, arch in TARGETS:
-        binary = f"Nexora-{version}-{os_name}-{arch}"
-        if os_name == "windows":
-            binary += ".exe"
-            archive = binary.removesuffix(".exe") + ".zip"
-        else:
-            archive = binary + ".tar.gz"
-        checksum_assets.update((binary, archive))
-        public_assets.update((binary, archive, binary + ".spdx.json"))
+    for os_name, arches in TARGETS.items():
+        for arch in arches:
+            stem = f"Nexora-{version}-{os_name}-{arch}"
+            binary = stem + (".exe" if os_name == "windows" else "")
+            if os_name == "darwin":
+                installers = {stem + ".dmg"}
+            elif os_name == "linux":
+                installers = {stem + ".deb", stem + ".rpm"}
+            else:
+                installers = {stem + "-setup.exe"}
+            public_assets.update(installers)
+            checksum_assets.update(installers)
+            sbom = binary + ".spdx.json"
+            public_assets.add(sbom)
+            checksum_assets.add(sbom)
+    public_assets.add("SHA256SUMS")
     return public_assets, checksum_assets
 
 

@@ -1,4 +1,4 @@
-name: Build cross-platform binaries
+name: Build native installers
 
 on:
   push:
@@ -50,6 +50,7 @@ jobs:
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version: "1.27.4"
+          cache: true
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
       - name: Check Go formatting
@@ -69,6 +70,8 @@ jobs:
         run: bash ./scripts/check-ui-security.sh
       - name: Check packaging script syntax
         run: bash ./scripts/check-packaging-syntax.sh
+      - name: Test installer asset inventory
+        run: python3 ./scripts/test-installer-inventory.py
       - name: Test release asset inventory gate
         run: python3 ./scripts/test-release-inventory.py
       - name: Set release version
@@ -77,24 +80,16 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Build six targets
-        run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/build-all.sh
-      - name: Verify release SHA256 manifest
-        run: |
-          set -euo pipefail
-          test "$(wc -l < dist/SHA256SUMS | tr -d ' ')" -eq 12
-          (cd dist && sha256sum -c SHA256SUMS)
-      - name: Scan all release binaries for known vulnerabilities
+      - name: Build six platform binaries
+        run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/build-binaries.sh
+      - name: Scan platform binaries for known vulnerabilities
         env:
           VERSION: ${{ env.VERSION }}
         run: |
           set -euo pipefail
           go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
           scanner="$(go env GOPATH)/bin/govulncheck"
-          for binary in dist/Nexora-${VERSION}-*; do
-            case "$binary" in
-              *.tar.gz|*.zip|*.spdx.json) continue ;;
-            esac
+          for binary in dist/bin/Nexora-${VERSION}-*; do
             "$scanner" -mode=binary "$binary"
           done
       - name: Download Syft
@@ -102,34 +97,168 @@ jobs:
         uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           syft-version: v1.57.2
-      - name: Generate per-binary SPDX SBOMs
+      - name: Generate SPDX SBOMs for platform binaries
         env:
           VERSION: ${{ env.VERSION }}
         run: |
           set -euo pipefail
+          mkdir -p dist/sbom
           syft="${{ steps.syft.outputs.cmd }}"
-          for binary in dist/Nexora-${VERSION}-*; do
-            case "$binary" in
-              *.tar.gz|*.zip|*.spdx.json) continue ;;
-            esac
-            "$syft" "$binary" -o spdx-json > "${binary}.spdx.json"
+          for binary in dist/bin/Nexora-${VERSION}-*; do
+            "$syft" "$binary" -o spdx-json > "dist/sbom/$(basename "$binary").spdx.json"
           done
-      - name: Verify exact release asset inventory
-        env:
-          VERSION: ${{ env.VERSION }}
-        run: python3 ./scripts/verify-release-inventory.py "$VERSION" dist
-      - name: Upload release artifacts for downstream jobs
+      - name: Upload binaries for native packaging
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          name: release-binaries
+          path: dist/bin/Nexora-${{ env.VERSION }}-*
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload binary SBOMs for release assembly
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-sboms
+          path: dist/sbom/Nexora-${{ env.VERSION }}-*.spdx.json
+          if-no-files-found: error
+          retention-days: 1
+
+  package-linux:
+    needs: build
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.27.4"
+          cache: true
+      - name: Install RPM inspection tools
+        run: sudo apt-get update && sudo apt-get install --yes rpm
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-binaries
+          path: dist/bin
+      - name: Install pinned nFPM
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
+      - name: Add Go binaries to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Build DEB and RPM packages
+        env:
+          NFPM_BIN: nfpm
+        run: ./scripts/package-linux.sh "$VERSION" dist/bin dist/installers
+      - name: Inspect Linux installers
+        run: ./scripts/test-linux-packages.sh "$VERSION" dist/installers
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-installers
+          path: dist/installers/Nexora-${{ env.VERSION }}-linux-*.deb
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-rpm-installers
+          path: dist/installers/Nexora-${{ env.VERSION }}-linux-*.rpm
+          if-no-files-found: error
+          retention-days: 1
+
+  package-macos:
+    needs: build
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-binaries
+          path: dist/bin
+      - name: Build macOS DMG installers
+        run: ./scripts/package-macos-dmg.sh "$VERSION" dist/bin dist/installers
+      - name: Inspect macOS DMG installers
+        run: ./scripts/test-package-macos-dmg.sh "$VERSION" dist/installers
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-installers
+          path: dist/installers/Nexora-${{ env.VERSION }}-darwin-*.dmg
+          if-no-files-found: error
+          retention-days: 1
+
+  package-windows:
+    needs: build
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install Inno Setup 6
+        run: choco install innosetup --version=6.7.1 --yes --no-progress
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-binaries
+          path: dist/bin
+      - name: Build and smoke-test Windows installers
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -Version "$env:VERSION" -BinaryDirectory ./dist/bin -OutputDirectory ./dist/installers
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-installers
+          path: dist/installers/Nexora-${{ env.VERSION }}-windows-*-setup.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble:
+    needs: [build, package-linux, package-macos, package-windows]
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-installers
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-rpm-installers
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: macos-installers
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-installers
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-sboms
+          path: dist
+      - name: Write installer and SBOM checksums
+        run: |
+          python3 - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          root = Path("dist")
+          files = sorted(path for path in root.iterdir() if path.is_file() and path.name != "SHA256SUMS")
+          (root / "SHA256SUMS").write_text("".join(f"{sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in files), encoding="utf-8")
+          PY
+      - name: Verify exact installer inventory
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          python3 ./scripts/test-installer-inventory.py
+          python3 ./scripts/test-release-inventory.py
+          python3 ./scripts/verify-release-inventory.py "$VERSION" dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
           name: release-dist
-          path: |
-            dist/Nexora-${{ env.VERSION }}-*
-            dist/SHA256SUMS
+          path: dist/*
           if-no-files-found: error
           retention-days: 1
 
   attest:
-    needs: build
+    needs: [build, assemble]
     env:
       VERSION: ${{ needs.build.outputs.version }}
     permissions:
@@ -143,7 +272,7 @@ jobs:
         with:
           name: release-dist
           path: dist
-      - name: Attest release artifacts
+      - name: Attest native installers, SBOMs, and checksums
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: |
@@ -151,7 +280,7 @@ jobs:
             dist/SHA256SUMS
 
   publish:
-    needs: [build, attest]
+    needs: [build, assemble, attest]
     env:
       VERSION: ${{ needs.build.outputs.version }}
     permissions:
@@ -162,17 +291,21 @@ jobs:
         with:
           name: release-dist
           path: dist
-      - name: Publish verified binaries
+      - name: Publish verified native installers
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           body: |
-            Nexora is a local service configured through a browser. The settings page is split into Overview, Connection, Permissions, and Diagnostics tabs.
+            Nexora is a local service configured through a browser. Its web settings page is at `http://localhost:18080` while Nexora is running.
 
-            Download the archive matching your operating system and architecture. On macOS or Linux, extract the archive and run `./install-unix.sh ./Nexora`. Start the service with `~/.local/bin/Nexora -no-open`. On Windows, run `install-windows.ps1 -Source .\Nexora.exe` in PowerShell, then launch the installed `Nexora.exe` with `-no-open`.
+            **macOS:** Open the DMG, drag `Nexora.app` into Applications, then open it. The app starts the local service and opens its setup page.
 
-            The service prints a temporary settings URL. On a headless server, create an SSH local port forward with `ssh -L 18080:127.0.0.1:18080 user@server`, then open the printed URL in a local browser. Both the MCP service and web settings page bind only to loopback.
+            **Debian/Ubuntu:** Install the matching `.deb` with `sudo apt install ./Nexora-<version>-linux-<amd64-or-arm64>.deb`, then launch Nexora from the applications menu.
 
-            See the included README and privacy/data-flow guide before connecting Nexora to ChatGPT.
+            **Fedora/RHEL:** Install the matching `.rpm` with `sudo dnf install ./Nexora-<version>-linux-<amd64-or-arm64>.rpm`, then launch Nexora from the applications menu.
+
+            **Windows:** Run the matching `-setup.exe` installer. Keep **Launch Nexora** selected on the final page to start Nexora and open the setup page.
+
+            The settings page and MCP endpoint bind only to loopback. Nexora stores settings and credentials in your user profile and keeps them when the application is uninstalled. See the included README and privacy/data-flow guide before connecting Nexora to ChatGPT.
           files: |
             dist/Nexora-${{ env.VERSION }}-*
             dist/SHA256SUMS

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"nexora/internal/config"
+	"nexora/internal/ui"
 )
 
 //go:embed http_test.go
@@ -38,6 +39,35 @@ func TestUIAPIRequiresPerLaunchSessionToken(t *testing.T) {
 				t.Fatalf("status = %d, want %d", rec.Code, tc.status)
 			}
 		})
+	}
+}
+
+func TestUISessionBootstrapAssetIsServed(t *testing.T) {
+	mux := http.NewServeMux()
+	NewHTTP(New(config.Config{}, config.Secrets{}), ui.FS, "launch-secret", nil).Register(mux)
+	req := httptest.NewRequest(http.MethodGet, "/assets/ui-session.js", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("initializeNexoraUISession")) {
+		t.Fatal("UI session bootstrap asset was not served")
+	}
+}
+
+func TestIndexEmbedsTheCurrentUIAccessCredential(t *testing.T) {
+	mux := http.NewServeMux()
+	NewHTTP(New(config.Config{}, config.Secrets{}), ui.FS, "launch-secret", nil).Register(mux)
+	req := httptest.NewRequest(http.MethodGet, "http://localhost:18080/", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	want := []byte(`<meta name="nexora-ui-session" content="launch-secret">`)
+	if !bytes.Contains(rec.Body.Bytes(), want) {
+		t.Fatal("index page did not receive the current per-process UI credential")
 	}
 }
 

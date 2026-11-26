@@ -77,8 +77,8 @@ def main() -> None:
         tampered = root / "tampered"
         tampered.mkdir()
         make_inventory(tampered)
-        binary = next(path for path in tampered.iterdir() if path.name.endswith("-darwin-amd64"))
-        binary.write_text("modified after checksumming", encoding="utf-8")
+        installer = next(path for path in tampered.iterdir() if path.name.endswith("-darwin-amd64.dmg"))
+        installer.write_text("modified after checksumming", encoding="utf-8")
         if run_verifier(tampered).returncode == 0:
             raise SystemExit("artifact with a mismatched checksum was accepted")
 

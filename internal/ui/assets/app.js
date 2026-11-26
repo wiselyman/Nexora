@@ -1,11 +1,10 @@
 const $=id=>document.getElementById(id);let formRevision=0;let savedRevision=0;const dirtyFields=new Set();let approvalSignature='';let approvalPollRunning=false;let approvalRequestIDs=new Set();let configLoadPromise=null;
 let setActiveTab=()=>{};
 let savePromise=null;
-const uiSessionKey='Nexora-ui-session';
-const startupToken=new URLSearchParams(location.hash.slice(1)).get('ui_session')||'';
-let uiToken=startupToken;
-try{if(startupToken){sessionStorage.setItem(uiSessionKey,startupToken);history.replaceState(null,'',location.pathname+location.search)}else{uiToken=sessionStorage.getItem(uiSessionKey)||''}}catch{}
-async function api(path,body){const headers={'X-Nexora-UI-Session':uiToken};if(body)headers['Content-Type']='application/json';const res=await fetch(path,{method:body?'POST':'GET',headers,body:body?JSON.stringify(body):undefined});if(!res.ok){let m=await res.text();if(res.status===401){uiToken='';try{sessionStorage.removeItem(uiSessionKey)}catch{}}throw Error(m||`请求失败 (${res.status})`)}return res.json()}
+let uiSession={token:'',clear(){}};
+try{uiSession=window.initializeNexoraUISession(window.location,window.history,document.querySelector('meta[name="nexora-ui-session"]')?.content||'')}catch{}
+let uiToken=uiSession.token;
+async function api(path,body){const headers={'X-Nexora-UI-Session':uiToken};if(body)headers['Content-Type']='application/json';const res=await fetch(path,{method:body?'POST':'GET',headers,body:body?JSON.stringify(body):undefined});if(!res.ok){let m=await res.text();if(res.status===401){uiToken='';uiSession.clear()}throw Error(m||`请求失败 (${res.status})`)}return res.json()}
 function toast(s){$('toast').textContent=s;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2700)}
 function setTextIfChanged(id,value){const element=$(id);if(element.textContent!==value)element.textContent=value}
 function setupTabs(){const tabs=[...document.querySelectorAll('[role="tab"]')];const activate=tab=>{for(const candidate of tabs){const selected=candidate===tab;candidate.setAttribute('aria-selected',String(selected));candidate.tabIndex=selected?0:-1;candidate.classList.toggle('active',selected);const panel=$(candidate.getAttribute('aria-controls'));panel.hidden=!selected;panel.classList.toggle('active',selected)}};setActiveTab=id=>{const tab=$(id);if(tab)activate(tab)};for(const tab of tabs){tab.addEventListener('click',()=>activate(tab));tab.addEventListener('keydown',event=>{let index=tabs.indexOf(tab);if(event.key==='ArrowRight')index=(index+1)%tabs.length;else if(event.key==='ArrowLeft')index=(index+tabs.length-1)%tabs.length;else if(event.key==='Home')index=0;else if(event.key==='End')index=tabs.length-1;else return;event.preventDefault();activate(tabs[index]);tabs[index].focus()})}for(const button of document.querySelectorAll('[data-open-tab]'))button.addEventListener('click',()=>{setActiveTab(button.dataset.openTab);$(button.dataset.openTab)?.focus()})}

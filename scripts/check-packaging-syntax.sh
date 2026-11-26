@@ -24,23 +24,39 @@ required = (
     "version: ${{ steps.version.outputs.version }}",
     'echo "version=$version" >> "$GITHUB_OUTPUT"',
     "VERSION: ${{ needs.build.outputs.version }}",
-    "dist/Nexora-${{ env.VERSION }}-*",
+    "package-linux:",
+    "package-macos:",
+    "package-windows:",
+    "assemble:",
+    "attest:",
+    "publish:",
+    "./scripts/package-linux.sh",
+    "./scripts/package-macos-dmg.sh",
+    "./scripts/test-package-macos-dmg.sh",
+    "./scripts/package-windows.ps1",
+    "./scripts/test-linux-packages.sh",
+    "python3 ./scripts/test-installer-inventory.py",
     "python3 ./scripts/test-release-inventory.py",
     'python3 ./scripts/verify-release-inventory.py "$VERSION" dist',
+    "Nexora-<version>-linux-<amd64-or-arm64>.deb",
+    "Nexora-<version>-linux-<amd64-or-arm64>.rpm",
+    "-setup.exe",
+    "http://localhost:18080",
     "dist/SHA256SUMS",
 )
 missing = [item for item in required if item not in source]
 if missing:
-    raise SystemExit(f"release workflow is missing inventory/version checks: {missing}")
-if source.count("dist/Nexora-${{ env.VERSION }}-*") != 3:
-    raise SystemExit("upload, attestation, and publishing must select the normalized version")
-if "path: dist/*" in source:
-    raise SystemExit("release upload must use the explicit versioned inventory")
+    raise SystemExit(f"release workflow is missing native installer gates: {missing}")
+if source.count("path: dist/*") != 1:
+    raise SystemExit("only the post-verification assembled inventory may be uploaded as dist/*")
+if source.index('python3 ./scripts/verify-release-inventory.py "$VERSION" dist') > source.index("name: release-dist"):
+    raise SystemExit("the exact asset inventory must pass before upload")
 if "VERSION: ${{ github.ref_name }}" in source:
     raise SystemExit("release jobs must use the normalized build version, not the raw tag")
 ci_source = pathlib.Path(sys.argv[1]).with_name("ci.yml").read_text(encoding="utf-8")
-if "python3 ./scripts/test-release-inventory.py" not in ci_source:
-    raise SystemExit("CI must run the release inventory gate regression test")
+for test in ("python3 ./scripts/test-release-inventory.py", "python3 ./scripts/test-installer-inventory.py"):
+    if test not in ci_source:
+        raise SystemExit(f"CI must run {test}")
 PY
 
 while IFS='|' read -r wrapper target; do

@@ -55,11 +55,19 @@ func main() {
 		}
 		log.Fatalf("Nexora 无法监听本机 MCP 地址 %s：%v", addr, err)
 	}
-	uiAddr := "127.0.0.1:18080"
-	uiListener, err := net.Listen("tcp", uiAddr)
-	if err != nil {
+	uiListeners := make([]net.Listener, 0, 2)
+	var uiListenErrs []error
+	for _, uiAddr := range []string{"127.0.0.1:18080", "[::1]:18080"} {
+		uiListener, listenErr := net.Listen("tcp", uiAddr)
+		if listenErr != nil {
+			uiListenErrs = append(uiListenErrs, fmt.Errorf("%s: %w", uiAddr, listenErr))
+			continue
+		}
+		uiListeners = append(uiListeners, uiListener)
+	}
+	if len(uiListeners) == 0 {
 		_ = listener.Close()
-		log.Fatalf("Nexora 无法启动网页设置服务：本机端口 %s 已被占用或不可用：%v", uiAddr, err)
+		log.Fatalf("Nexora 无法启动网页设置服务：本机端口 18080 的回环地址均不可用：%v", errors.Join(uiListenErrs...))
 	}
 
 	cfg, err := config.Load()
@@ -108,7 +116,7 @@ func main() {
 	uiMux.Handle("/", mux)
 	uiServer := &http.Server{Handler: loopbackOnlyForPorts(uiMux, 18080), ReadHeaderTimeout: 5 * time.Second}
 	log.Printf("Nexora local service ready (MCP compatibility endpoint: http://%s/mcp)", addr)
-	uiURL := "http://" + uiAddr + "/#ui_session=" + uiToken
+	uiURL := configurationURL()
 	if !*noOpen {
 		if err := openBrowser(uiURL); err != nil {
 			fmt.Printf("Nexora 配置页面（本次运行有效；无桌面环境时可通过 SSH 本地端口转发访问）：%s\n", uiURL)
@@ -133,14 +141,16 @@ func main() {
 		_ = uiServer.Shutdown(shutdown)
 		service.StopTunnel()
 	}()
-	serveErrCh := make(chan error, 2)
+	serveErrCh := make(chan error, 1+len(uiListeners))
 	go func() { serveErrCh <- server.Serve(listener) }()
-	go func() { serveErrCh <- uiServer.Serve(uiListener) }()
+	for _, uiListener := range uiListeners {
+		go func(listener net.Listener) { serveErrCh <- uiServer.Serve(listener) }(uiListener)
+	}
 	serveErrDone := make(chan struct{})
 	var serviceFailure error
 	go func() {
 		defer close(serveErrDone)
-		for range 2 {
+		for range 1 + len(uiListeners) {
 			serveErr := <-serveErrCh
 			if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 				serviceFailure = serveErr
@@ -174,6 +184,10 @@ func openBrowser(url string) error {
 		cmd = exec.Command("xdg-open", url)
 	}
 	return cmd.Start()
+}
+
+func configurationURL() string {
+	return "http://localhost:18080"
 }
 
 func loopbackOnly(next http.Handler) http.Handler {

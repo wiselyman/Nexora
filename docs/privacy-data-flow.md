@@ -11,7 +11,7 @@ ChatGPT / OpenAI 产品
         ↕ MCP 请求、工具参数和结果
 OpenAI Tunnel 服务
         ↕ tunnel-client 发起的出站 HTTPS 连接
-Nexora 浏览器配置页 → http://127.0.0.1:18080 → Nexora 本机 UI/API
+Nexora 浏览器配置页 → http://localhost:18080 → Nexora 本机 UI/API
 本机 tunnel-client → http://127.0.0.1:5060/mcp → Nexora MCP
 ```
 

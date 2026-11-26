@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Nexora
+Comment=Connect this computer to ChatGPT
+Exec=/usr/bin/nexora
+Icon=nexora
+Terminal=false
+Categories=Utility;Network;
+StartupNotify=true

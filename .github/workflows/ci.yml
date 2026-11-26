@@ -25,6 +25,8 @@ jobs:
         run: bash ./scripts/check-packaging-syntax.sh
       - name: Test release asset inventory gate
         run: python3 ./scripts/test-release-inventory.py
+      - name: Test native installer inventory and setup guidance
+        run: python3 ./scripts/test-installer-inventory.py
       - name: Check Go formatting
         run: |
           files="$(gofmt -l $(git ls-files '*.go'))"

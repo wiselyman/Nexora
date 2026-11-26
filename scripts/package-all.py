@@ -49,7 +49,7 @@ def main() -> None:
 def unix_instructions() -> str:
     return ("Nexora server installation\n\n"
         "1. Extract this archive.\n2. Run: chmod +x install-unix.sh && ./install-unix.sh ./Nexora\n"
-        "3. Start with: ~/.local/bin/Nexora -no-open. The setup URL is printed in the terminal.\n"
+        "3. Start with: ~/.local/bin/Nexora -no-open. The settings address is printed in the terminal.\n"
         "If an upgrade needs to be undone, run: bash ./rollback-unix.sh\n"
         "For a headless remote host, forward the UI with: ssh -L 18080:127.0.0.1:18080 user@server\n"
         "Then open the printed URL locally. The service stays bound to loopback; it exposes no public web port.\n")
@@ -59,7 +59,7 @@ def windows_instructions() -> str:
     return ("Nexora server installation\r\n\r\n"
         "In PowerShell run: .\\install-windows.ps1 -Source .\\Nexora.exe\r\n"
         'Then start with: & "$env:LOCALAPPDATA\\Programs\\Nexora\\Nexora.exe" -no-open\r\n'
-        "The setup URL is printed in the terminal. For remote headless use, forward 127.0.0.1:18080 over SSH.\r\n")
+        "The settings address is printed in the terminal. For remote headless use, forward 127.0.0.1:18080 over SSH.\r\n")
 
 
 

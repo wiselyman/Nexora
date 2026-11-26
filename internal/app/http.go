@@ -4,7 +4,9 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
+	"html"
 	"net/http"
+	"strings"
 
 	"nexora/internal/config"
 	"nexora/internal/desktop"
@@ -27,6 +29,9 @@ func (h *HTTP) Register(m *http.ServeMux) {
 	m.HandleFunc("/assets/5060.png", h.icon)
 	m.HandleFunc("/assets/approval-text.js", func(w http.ResponseWriter, r *http.Request) {
 		h.asset(w, r, "assets/approval-text.js", "text/javascript; charset=utf-8")
+	})
+	m.HandleFunc("/assets/ui-session.js", func(w http.ResponseWriter, r *http.Request) {
+		h.asset(w, r, "assets/ui-session.js", "text/javascript; charset=utf-8")
 	})
 	m.HandleFunc("/assets/app.css", func(w http.ResponseWriter, r *http.Request) {
 		h.asset(w, r, "assets/app.css", "text/css; charset=utf-8")
@@ -69,9 +74,10 @@ func (h *HTTP) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	page := strings.Replace(string(b), "__NEXORA_UI_SESSION__", html.EscapeString(h.uiToken), 1)
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(b)
+	_, _ = w.Write([]byte(page))
 }
 func (h *HTTP) privacy(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/privacy" {

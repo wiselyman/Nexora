@@ -6,16 +6,20 @@ html="$root/internal/ui/index.html"
 privacy="$root/internal/ui/privacy.html"
 js="$root/internal/ui/assets/app.js"
 approval_js="$root/internal/ui/assets/approval-text.js"
+session_js="$root/internal/ui/assets/ui-session.js"
 css="$root/internal/ui/assets/app.css"
 
 node --check "$js"
 node --check "$approval_js"
+node --check "$session_js"
 node "$root/scripts/test-approval-text.js"
+node "$root/scripts/test-ui-session.js"
 test -f "$css"
 test -f "$privacy"
 rg -q --fixed-strings 'href="/assets/app.css"' "$html"
 rg -q --fixed-strings 'src="/assets/app.js"' "$html"
 rg -q --fixed-strings 'src="/assets/approval-text.js"' "$html"
+rg -q --fixed-strings 'src="/assets/ui-session.js"' "$html"
 rg -q --fixed-strings 'href="/assets/app.css"' "$privacy"
 
 if rg -i -n --pcre2 '<script(?![^>]*\bsrc=)[^>]*>|<style(?:\s|>)|\sstyle\s*=|\son[a-z][a-z0-9_-]*\s*=' "$html" "$privacy"; then
@@ -45,6 +49,7 @@ for directive in \
 done
 rg -q --fixed-strings '"/assets/app.js"' "$root/internal/app/http.go"
 rg -q --fixed-strings '"/assets/approval-text.js"' "$root/internal/app/http.go"
+rg -q --fixed-strings '"/assets/ui-session.js"' "$root/internal/app/http.go"
 rg -q --fixed-strings '"/assets/app.css"' "$root/internal/app/http.go"
 rg -q --fixed-strings '"/privacy"' "$root/internal/app/http.go"
 rg -q --fixed-strings '"/api/runtime-key/clear", h.requireUIAuth(http.HandlerFunc(h.clearRuntimeAPIKey))' "$root/internal/app/http.go"
