@@ -22,10 +22,13 @@ foreach ($arch in @("amd64", "arm64")) {
 # Smoke-test a full user-scoped install and uninstall using the amd64 payload.
 $installRoot = Join-Path $env:RUNNER_TEMP "Nexora-installer-smoke"
 $installer = Join-Path $outputDirectory "Nexora-$Version-windows-amd64-setup.exe"
-& $installer "/VERYSILENT" "/SUPPRESSMSGBOXES" "/NORESTART" "/DIR=$installRoot"
+& $installer "/VERYSILENT" "/SUPPRESSMSGBOXES" "/NORESTART" "/DIR=`"$installRoot`"" "/LOG=$(Join-Path $env:RUNNER_TEMP 'Nexora-installer-smoke.log')"
 if ($LASTEXITCODE -ne 0) { throw "Silent installer smoke test failed with exit code $LASTEXITCODE" }
 $installedBinary = Join-Path $installRoot "Nexora.exe"
-if (!(Test-Path -LiteralPath $installedBinary -PathType Leaf)) { throw "Installer did not place Nexora.exe" }
+if (!(Test-Path -LiteralPath $installedBinary -PathType Leaf)) {
+  Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP "Nexora-installer-smoke.log") -ErrorAction SilentlyContinue
+  throw "Installer did not place Nexora.exe in $installRoot"
+}
 $versionOutput = & $installedBinary -version
 if ($LASTEXITCODE -ne 0 -or $versionOutput -ne $Version) { throw "Installed binary returned unexpected version: $versionOutput" }
 $uninstaller = Join-Path $installRoot "unins000.exe"
